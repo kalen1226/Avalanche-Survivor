@@ -1,0 +1,298 @@
+/ Avalanche Survivor, a game in which a player must continuously dodge incoming obstacles spawning from the bottom of the screen. The user can control the sprite using either the arrow keys or ASDW. If the player is hit by one of the obstacles, the game is over.
+//Assistance from Teaching Assistants, but specifically Max Levatich.
+//source: https://www.youtube.com/watch?v=yFLa3ln16w0
+//source: https://wiki.libsdl.org/
+//source: https://www.tutorialspoint.com/c_standard_library/c_function_rand.htm
+//source: https://stackoverflow.com/questions/20722531/c-sdl-collision-between-sprites
+#include <stdio.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_timer.h>
+#include <SDL2/SDL_image.h>
+
+//Define the dimensions of the window in which the game will be played
+#define WINDOW_WIDTH (800)
+#define WINDOW_HEIGHT (600)
+
+//Speed in pixels/second for player and hazards respectively
+#define SPEED (800)
+#define SCROLL_SPEED (400)
+
+//A rectangle struct array for holding each hazard struct
+SDL_Rect hazards[15];
+
+//A function that gives each individual hazard struct the starting postion, width, and height defined in int(main)
+SDL_Rect make_rectangle(int width, int height)
+{
+     SDL_Rect haz;
+     int random_position = rand() % WINDOW_WIDTH;
+     //Position the hazard sprite at random x location and at bottom of screen
+     haz.x = random_position;
+     haz.y = (((double) rand()/RAND_MAX)+1)/1.2*WINDOW_HEIGHT + 500;
+     haz.w = width;
+     haz.h = height;
+     return haz;
+}
+
+int main(void)
+{
+    //Attempt to initialize graphics and timer system
+    if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_TIMER) != 0)
+    {
+        printf("error initializing SDL: %s\n", SDL_GetError());
+        return 1;
+    }
+
+    SDL_Window* win = SDL_CreateWindow("Game!",
+                                       SDL_WINDOWPOS_CENTERED,
+                                       SDL_WINDOWPOS_CENTERED,
+                                       WINDOW_WIDTH, WINDOW_HEIGHT,0);
+    if (!win)
+    {
+        printf("error creating window: %s\n", SDL_GetError());
+        SDL_Quit();
+	    return 1;
+    }
+
+    //Create a renderer, which sets up the graphics hardware
+    Uint32 render_flags = SDL_RENDERER_ACCELERATED;
+    SDL_Renderer* rend = SDL_CreateRenderer(win, -1, render_flags);
+    if (!rend)
+    {
+        printf("error creating renderer: %s\n", SDL_GetError());
+        SDL_DestroyWindow(win);
+        SDL_Quit();
+        return 1;
+    }
+
+    //Load hazard sprite into memory
+    SDL_Surface* surface2 = IMG_Load("resources/5203-Galaga_Alien_Ship_C.png");
+    if (!surface2)
+    {
+        printf("error creating surface\n");
+        SDL_DestroyRenderer(rend);
+        SDL_DestroyWindow(win);
+        SDL_Quit();
+        return 1;
+    }
+
+    //Load the image of hazard into the graphics hardware's memory
+    SDL_Texture* tex2 = SDL_CreateTextureFromSurface(rend, surface2);
+    SDL_FreeSurface(surface2);
+    if (!tex2)
+    {
+        printf("error creating texture: %s\n", SDL_GetError());
+        SDL_DestroyRenderer(rend);
+        SDL_DestroyWindow(win);
+        SDL_Quit();
+        return 1;
+    }
+
+    //Struct to hold the position and size of the hazard sprite
+    SDL_Rect hazard;
+
+    // get and scale the dimensions of texture
+    SDL_QueryTexture(tex2, NULL, NULL, &hazard.w, &hazard.h);
+    hazard.w /= 8;
+    hazard.h /= 6;
+
+    // Position the sprite at random x location and at top of screen
+    // Origin is the top left corner, positive y is down
+    hazard.x = rand() % 800;
+
+    // For-loop that iterates over the array hazards and fills each element with a copy of the Galaga sprite.
+    for(int a = 0; a < 15; a++)
+    {
+           hazards[a] = make_rectangle(hazard.w, hazard.h);
+    }
+
+
+    //Load player sprite into memory using SDL_image library function
+    SDL_Surface* surface = IMG_Load("resources/piq_268704_400x400.png");
+    if (!surface)
+    {
+        printf("error creating surface\n");
+        SDL_DestroyRenderer(rend);
+        SDL_DestroyWindow(win);
+        SDL_Quit();
+        return 1;
+    }
+
+
+    //Load the player sprite data into the graphics hardware's memory
+    SDL_Texture* tex = SDL_CreateTextureFromSurface(rend, surface);
+    SDL_FreeSurface(surface);
+    if (!tex)
+    {
+        printf("error creating texture: %s\n", SDL_GetError());
+        SDL_DestroyRenderer(rend);
+        SDL_DestroyWindow(win);
+        SDL_Quit();
+        return 1;
+    }
+
+    //Struct to hold the position and size of the player sprite
+    SDL_Rect player;
+
+    //Get and scale the dimensions of texture for player sprite
+    SDL_QueryTexture(tex, NULL, NULL, &player.w, &player.h);
+    player.w /= 5;
+    player.h /= 5;
+
+    //Start player sprite in the center of the screen
+    float x_pos = (WINDOW_WIDTH - player.w) / 2;
+    float y_pos = (WINDOW_HEIGHT - player.h)/ 2;
+    float x_vel = 0;
+    float y_vel = 0;
+
+    //Declare keyboard input values to keep track of which inputs are given
+    int up = 0;
+    int down = 0;
+    int left = 0;
+    int right = 0;
+
+    //Set to 1 when window close button is pressed
+    int close_requested = 0;
+
+
+    // animation loop for both player and hazards that runs until either the player collides with hazard or the user closes the window
+    while (!close_requested)
+    {
+
+	//Process events that take place when user presses down any of the up, down, left, right, A, S, D, and W keys
+        SDL_Event event;
+        while (SDL_PollEvent(&event))
+        {
+            switch (event.type)
+            {
+            //Event case where user presses close button on window to exit game
+            case SDL_QUIT:
+                close_requested = 1;
+                break;
+            //Event case where user is pressing down a key
+            case SDL_KEYDOWN:
+                switch (event.key.keysym.scancode)
+                {
+                case SDL_SCANCODE_W:
+                case SDL_SCANCODE_UP:
+                    up = 1;
+                    break;
+                case SDL_SCANCODE_A:
+                case SDL_SCANCODE_LEFT:
+                    left = 1;
+                    break;
+                case SDL_SCANCODE_S:
+                case SDL_SCANCODE_DOWN:
+                    down = 1;
+                    break;
+                case SDL_SCANCODE_D:
+                case SDL_SCANCODE_RIGHT:
+                    right = 1;
+                    break;
+                }
+                break;
+            //Event case where user isn't pressing down a key
+            case SDL_KEYUP:
+                switch (event.key.keysym.scancode)
+                {
+                case SDL_SCANCODE_W:
+                case SDL_SCANCODE_UP:
+                    up = 0;
+                    break;
+                case SDL_SCANCODE_A:
+                case SDL_SCANCODE_LEFT:
+                    left = 0;
+                    break;
+                case SDL_SCANCODE_S:
+                case SDL_SCANCODE_DOWN:
+                    down = 0;
+                    break;
+                case SDL_SCANCODE_D:
+                case SDL_SCANCODE_RIGHT:
+                    right = 0;
+                    break;
+                }
+                break;
+            }
+
+        }
+
+        //Determine velocity of player sprite based on key inputs
+        x_vel = y_vel = 0;
+        if (up && !down) y_vel = -SPEED;
+        if (down && !up) y_vel = SPEED;
+        if (left && !right) x_vel = -SPEED;
+        if (right && !left) x_vel = SPEED;
+
+        //Update position of player sprite based on determined velocity
+        x_pos += x_vel / 60;
+        y_pos += y_vel / 60;
+
+        //Collision detection of player sprite with bounds of the window
+        if (x_pos <= 0) x_pos = 0;
+        if (y_pos <= 0) y_pos = 0;
+        if (x_pos >= WINDOW_WIDTH - player.w) x_pos = WINDOW_WIDTH - player.w;
+        if (y_pos >= WINDOW_HEIGHT - player.h) y_pos = WINDOW_HEIGHT - player.h;
+
+        //Set the positions of player in the struct
+        player.y = (int) y_pos;
+        player.x = (int) x_pos;
+
+
+        //Draw the image of player to the window
+	SDL_RenderCopy(rend, tex, NULL, &player);
+        SDL_RenderPresent(rend);
+
+
+
+
+
+
+        int b = 0;
+        //for-loop for interating through all 15 elements(copies of the hazard sprite) in the array "hazards")
+        for(b = 0; b < 15; b++)
+        {
+                //Check to see if plater has collided with one of the hazards. If so, then freeze the game the let the player know the game is over.
+                if(SDL_HasIntersection(&player, &hazards[b]))
+                {
+                        //clean up resources before exiting
+                        SDL_DestroyTexture(tex);
+                        SDL_DestroyTexture(tex2);
+                        SDL_DestroyRenderer(rend);
+                }
+
+                else
+                {
+                	//Draw the image of hazard to the window
+	                SDL_RenderCopy(rend, tex2, NULL, &hazards[b]);
+	                SDL_RenderPresent(rend);
+
+	                //Update hazard sprite position
+	                hazards[b].y -= (float) SCROLL_SPEED / 60;
+
+                        //If one of the hazard sprites has passed through the top of the screen, recycle it by reseting its position below the window so that the game continuously produces hazards for the player to doge
+                        if(!(hazards[b].y >= -hazards[b].h))
+                        {
+                                hazards[b].x = rand() % WINDOW_WIDTH;
+                                hazards[b].y = (((double) rand()/RAND_MAX)+1)/1.2*WINDOW_HEIGHT +200;
+                        }
+                 }
+        }
+
+
+        //Clear the window so that after-images are not left on the screen
+        SDL_RenderClear(rend);
+        // Wait 1/60th of a second for smooth animation
+        SDL_Delay(1000/60);
+    }
+
+    //Clean up resources before exiting the game1000
+    SDL_DestroyTexture(tex);
+    SDL_DestroyTexture(tex2);
+    SDL_DestroyRenderer(rend);
+    SDL_DestroyWindow(win);
+    SDL_Quit();
+
+}
+
+
+
